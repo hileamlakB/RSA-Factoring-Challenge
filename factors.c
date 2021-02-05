@@ -1,21 +1,51 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <stdbool.h>
+#include <string.h>
+/*#include <sys/types.h>
+#include <sys/stat.h>*/
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
-#include <inttypes.h>
+#include <gmp.h>
 
+#define Size 1000000
 
-unsigned long long int atou(char *num_str)
+int sieve(int stat)
 {
-	size_t i = 0;
-	unsigned long long int num = 0;
+	bool prime[Size];
+	static int primes[Size];
+	static int n_primes;
+	static int current;
 
-	while (num_str[i])
-		num = num * 10 + num_str[i] - 48, i += 1;
-	return (num);
+	if (stat == 0)
+	{
+		n_primes = 0;
+		current = 0;
+		memset(prime, true, sizeof(prime));
+
+		for (int p = 2; p * p < Size; p++)
+			if (prime[p] == true)
+				for (int i = p * p; i <= Size; i += p)
+					prime[i] = false;
+
+		// Print all prime numbers
+		for (int p = 2; p < Size; p++)
+			if (prime[p])
+			{
+				primes[n_primes] = p;
+				n_primes += 1;
+			}
+	}
+	else if (stat == 1)
+	{
+		current++;
+		if (current - 1 < n_primes)
+			return (primes[current - 1]);
+		return (-1);
+	}
+	else
+		current = 0;
 }
 
 /**
@@ -26,23 +56,55 @@ unsigned long long int atou(char *num_str)
  * @fs: File stream to print to
  *Return: the number of characters printed
  */
-size_t print_factor(unsigned long long int num, FILE *fs)
+size_t print_factor(mpz_t num, FILE *fs)
 {
-	unsigned long long int i, ans;
+	mpz_t i, ans, j, mod;
 	size_t printed = 0;
+	int prime = 2;
 
-	for (i = 2; i < num; i++)
-		if (num % i == 0)
+
+	mpz_init(i);
+	mpz_init(mod);
+	mpz_init(ans);
+	mpz_init(j);
+	mpz_set_ui(j, 1);
+	mpz_set_ui(i, 2);
+
+	while (1)
+	{
+		if (mpz_cmp(i, num) >= 0)
+			break;
+		if (prime != -1)
 		{
-			ans = num / i;
-			printed += fprintf(fs, "%llu=%llu*%llu\n", num, ans, i);
+			prime = sieve(1);
+			//printf("%i\n", prime);
+			if (prime != -1)
+				mpz_set_ui(i, prime);
+		}
+		mpz_mod (mod, num, i);
+		if (mpz_cmp_d(mod, 0) == 0)
+		{
+			mpz_div(ans, num, i);
+			printed += mpz_out_str(fs, 10, num);
+			printed += fprintf(fs, "=");
+			printed += mpz_out_str(fs, 10, ans);
+			printed += fprintf(fs, "*");
+			printed += mpz_out_str(fs, 10, i);
+			printed += fprintf(fs, "\n");
 			return (printed);
 		}
+		mpz_add(i, i, j);
+	}
 	/*incase the number is prime*/
-	printed += fprintf(fs, "%llu=%llu*%llu\n", num, num, (unsigned long long int)1);
+	printed += mpz_out_str(fs, 10, num);
+	printed += fprintf(fs, "=");
+	printed += mpz_out_str(fs, 10, num);
+	printed += fprintf(fs, "*");
+	printed += mpz_out_str(fs, 10, j);
+	printed += fprintf(fs, "\n");
+
 	return (printed);
 }
-
 
 
 /**
@@ -62,7 +124,7 @@ void exit_fail(void)
  */
 char *reader(int fd)
 {
-	char *line = malloc(15 * sizeof(char));
+	char *line = (char *)malloc(15 * sizeof(char));
 	int read_p = 0, stat, size = 15;
 	char *_line = line;
 
@@ -89,7 +151,7 @@ char *reader(int fd)
 		if (read_p == 15)
 		{
 			size += 15;
-			line = realloc(line, size);
+			line = (char *)realloc(line, size);
 			_line = line + read_p;
 			read_p = 0;
 		}
@@ -100,12 +162,14 @@ char *reader(int fd)
 int main(int argc, char **argv)
 {
 	int fd, stat;
-	unsigned long long int num = 0;
+	mpz_t num;
 	size_t printed = 0;
 	char *read_line = NULL;
 	FILE *tmp_file = tmpfile();
 
+	mpz_init(num);
 	tmp_file = fopen("tmp_file.txt", "w+");
+	sieve(0);
 
 	if (argc != 2)
 	{
@@ -124,11 +188,12 @@ int main(int argc, char **argv)
 
 	while ((read_line = reader(fd)))
 	{
-		num = atou(read_line);
+		sieve(3);
+		mpz_set_str(num, read_line, 10);
 		printed += print_factor(num, tmp_file);
 		free(read_line);
 	}
-	read_line = malloc(sizeof(char) * printed + 1);
+	read_line = (char *)malloc(sizeof(char) * printed + 1);
 
 	rewind(tmp_file);
 	stat = fread(read_line, sizeof(char), printed, tmp_file);
@@ -137,7 +202,7 @@ int main(int argc, char **argv)
 
 	printf("%s", read_line);
 
-	free(read_line);
+	//free(read_line);
 	close(fd);
 	exit(EXIT_SUCCESS);
 }
